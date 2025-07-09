@@ -1,0 +1,531 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import random
+import datetime
+
+class CyberThreatDetector:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("AI Cybersecurity Threat Detector")
+        self.root.geometry("1000x700")
+        self.root.configure(bg="#f0f2f5")
+        
+        # Sample network traffic data (features)
+        self.features = [
+            'duration', 'protocol_type', 'service', 'flag', 
+            'src_bytes', 'dst_bytes', 'land', 'wrong_fragment', 
+            'urgent', 'hot', 'num_failed_logins', 'logged_in', 
+            'num_compromised', 'root_shell', 'su_attempted', 
+            'num_root', 'num_file_creations', 'num_shells', 
+            'num_access_files', 'num_outbound_cmds', 
+            'is_host_login', 'is_guest_login', 'count', 
+            'srv_count', 'serror_rate', 'srv_serror_rate', 
+            'rerror_rate', 'srv_rerror_rate', 'same_srv_rate', 
+            'diff_srv_rate', 'srv_diff_host_rate', 
+            'dst_host_count', 'dst_host_srv_count',
+            'dst_host_same_srv_rate', 'dst_host_diff_srv_rate',
+            'dst_host_same_src_port_rate', 
+            'dst_host_srv_diff_host_rate', 'dst_host_serror_rate',
+            'dst_host_srv_serror_rate', 'dst_host_rerror_rate',
+            'dst_host_srv_rerror_rate'
+        ]
+        
+        # Sample attack types
+        self.attack_types = {
+            'normal': 'Normal traffic',
+            'dos': 'Denial of Service',
+            'probe': 'Probing Attack',
+            'r2l': 'Remote to Local',
+            'u2r': 'User to Root'
+        }
+        
+        self.create_widgets()
+        self.load_sample_data()
+        self.train_model()
+        
+    def create_widgets(self):
+        # Header
+        header_frame = tk.Frame(self.root, bg="#2c3e50", height=80)
+        header_frame.pack(fill="x")
+        
+        self.header_label = tk.Label(
+            header_frame, 
+            text="AI Cybersecurity Threat Detection System", 
+            font=("Helvetica", 18, "bold"), 
+            fg="white", 
+            bg="#2c3e50"
+        )
+        self.header_label.pack(pady=20)
+        
+        # Main content frame
+        content_frame = tk.Frame(self.root, bg="#f0f2f5")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Left panel - Input controls
+        left_panel = tk.Frame(content_frame, bg="#ffffff", bd=2, relief="groove", padx=10, pady=10)
+        left_panel.pack(side="left", fill="y", padx=(0, 10))
+        
+        # Network traffic simulation
+        tk.Label(left_panel, text="Simulate Network Traffic:", font=("Helvetica", 12), 
+                bg="#ffffff").pack(anchor="w", pady=(5, 2))
+        
+        self.traffic_var = tk.StringVar()
+        self.traffic_dropdown = ttk.Combobox(
+            left_panel, 
+            textvariable=self.traffic_var,
+            values=["Normal", "DoS Attack", "Probe Attack", "R2L Attack", "U2R Attack"],
+            state="readonly"
+        )
+        self.traffic_dropdown.pack(fill="x", pady=(0, 10))
+        self.traffic_dropdown.set("Normal")
+        
+        # Generate traffic button
+        gen_btn = tk.Button(
+            left_panel, 
+            text="Generate Traffic Sample", 
+            command=self.generate_traffic,
+            bg="#3498db", 
+            fg="white",
+            font=("Helvetica", 12, "bold"),
+            padx=15,
+            pady=5
+        )
+        gen_btn.pack(pady=10)
+        
+        # Detection button
+        detect_btn = tk.Button(
+            left_panel, 
+            text="Detect Threats", 
+            command=self.detect_threats,
+            bg="#e74c3c", 
+            fg="white",
+            font=("Helvetica", 12, "bold"),
+            padx=15,
+            pady=5
+        )
+        detect_btn.pack(pady=10)
+        
+        # Load sample button
+        load_sample_btn = tk.Button(
+            left_panel, 
+            text="Load Sample Dataset", 
+            command=self.load_sample_data,
+            bg="#2ecc71", 
+            fg="white",
+            font=("Helvetica", 10),
+            padx=10,
+            pady=3
+        )
+        load_sample_btn.pack(pady=5)
+        
+        # Results frame
+        self.results_frame = tk.Frame(left_panel, bg="#ffffff")
+        self.results_frame.pack(fill="x", pady=(10, 0))
+        
+        # Right panel - Visualization
+        right_panel = tk.Frame(content_frame, bg="#ffffff", bd=2, relief="groove")
+        right_panel.pack(side="right", fill="both", expand=True)
+        
+        # Notebook for tabs
+        self.notebook = ttk.Notebook(right_panel)
+        self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Tab 1 - Threat Dashboard
+        self.dashboard_tab = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.dashboard_tab, text="Threat Dashboard")
+        
+        # Tab 2 - Traffic Log
+        self.log_tab = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.log_tab, text="Traffic Log")
+        
+        # Tab 3 - Model Info
+        self.model_tab = tk.Frame(self.notebook, bg="#ffffff")
+        self.notebook.add(self.model_tab, text="Model Information")
+        
+        # Initialize data storage
+        self.traffic_data = []
+        self.model = None
+        self.model_accuracy = 0
+        
+    def load_sample_data(self):
+        # Generate synthetic network traffic data
+        num_samples = 1000
+        self.sample_data = []
+        
+        for _ in range(num_samples):
+            # Randomly select attack type (80% normal, 20% attacks)
+            attack_type = "normal" if random.random() < 0.8 else random.choice(list(self.attack_types.keys())[1:])
+            
+            # Generate random features based on attack type
+            features = {
+                'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'src_ip': f"192.168.{random.randint(1, 255)}.{random.randint(1, 255)}",
+                'dst_ip': f"10.0.{random.randint(1, 255)}.{random.randint(1, 255)}",
+                'src_port': random.randint(1024, 65535),
+                'dst_port': random.choice([80, 443, 22, 21, 53]),
+                'protocol': random.choice(['tcp', 'udp', 'icmp']),
+                'duration': random.uniform(0, 1) if attack_type == "normal" else random.uniform(1, 10),
+                'src_bytes': random.randint(100, 1000) if attack_type == "normal" else random.randint(1000, 100000),
+                'dst_bytes': random.randint(100, 1000) if attack_type == "normal" else random.randint(0, 100),
+                'wrong_fragment': random.randint(0, 5) if attack_type == "normal" else random.randint(5, 20),
+                'urgent': random.randint(0, 1),
+                'num_failed_logins': random.randint(0, 1) if attack_type == "normal" else random.randint(2, 10),
+                'logged_in': 1 if attack_type == "normal" else 0,
+                'num_root': random.randint(0, 1) if attack_type == "normal" else random.randint(2, 10),
+                'attack_type': attack_type,
+                'label': self.attack_types[attack_type]
+            }
+            
+            self.sample_data.append(features)
+        
+        messagebox.showinfo("Info", f"Loaded {num_samples} sample network traffic records")
+        self.update_dashboard()
+        
+    def train_model(self):
+        if not hasattr(self, 'sample_data'):
+            return
+            
+        # Convert to DataFrame
+        df = pd.DataFrame(self.sample_data)
+        
+        # Prepare features and labels
+        X = df[[
+            'duration', 'src_bytes', 'dst_bytes', 
+            'wrong_fragment', 'urgent', 'num_failed_logins',
+            'logged_in', 'num_root'
+        ]]
+        y = df['attack_type']
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+        
+        # Train Random Forest classifier
+        self.model = RandomForestClassifier(n_estimators=100, random_state=42)
+        self.model.fit(X_train, y_train)
+        
+        # Calculate accuracy
+        self.model_accuracy = self.model.score(X_test, y_test)
+        
+        # Update model info tab
+        self.update_model_info()
+        
+    def generate_traffic(self):
+        traffic_type = self.traffic_var.get()
+        
+        # Map to our attack types
+        attack_map = {
+            "Normal": "normal",
+            "DoS Attack": "dos",
+            "Probe Attack": "probe",
+            "R2L Attack": "r2l",
+            "U2R Attack": "u2r"
+        }
+        
+        attack_type = attack_map[traffic_type]
+        
+        # Generate traffic sample
+        traffic = {
+            'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'src_ip': f"192.168.{random.randint(1, 255)}.{random.randint(1, 255)}",
+            'dst_ip': f"10.0.{random.randint(1, 255)}.{random.randint(1, 255)}",
+            'src_port': random.randint(1024, 65535),
+            'dst_port': random.choice([80, 443, 22, 21, 53]),
+            'protocol': random.choice(['tcp', 'udp', 'icmp']),
+            'duration': random.uniform(0, 1) if attack_type == "normal" else random.uniform(1, 10),
+            'src_bytes': random.randint(100, 1000) if attack_type == "normal" else random.randint(1000, 100000),
+            'dst_bytes': random.randint(100, 1000) if attack_type == "normal" else random.randint(0, 100),
+            'wrong_fragment': random.randint(0, 5) if attack_type == "normal" else random.randint(5, 20),
+            'urgent': random.randint(0, 1),
+            'num_failed_logins': random.randint(0, 1) if attack_type == "normal" else random.randint(2, 10),
+            'logged_in': 1 if attack_type == "normal" else 0,
+            'num_root': random.randint(0, 1) if attack_type == "normal" else random.randint(2, 10),
+            'attack_type': attack_type,
+            'label': self.attack_types[attack_type]
+        }
+        
+        self.traffic_data.append(traffic)
+        self.update_dashboard()
+        self.update_traffic_log()
+        
+        messagebox.showinfo("Info", f"Generated {traffic_type} traffic sample")
+        
+    def detect_threats(self):
+        if not self.traffic_data:
+            messagebox.showwarning("Warning", "No traffic data to analyze")
+            return
+            
+        if not self.model:
+            messagebox.showwarning("Warning", "Model not trained")
+            return
+            
+        # Clear results frame
+        for widget in self.results_frame.winfo_children():
+            widget.destroy()
+            
+        # Analyze all traffic
+        threats_detected = 0
+        for traffic in self.traffic_data:
+            # Prepare features for prediction
+            features = np.array([[
+                traffic['duration'],
+                traffic['src_bytes'],
+                traffic['dst_bytes'],
+                traffic['wrong_fragment'],
+                traffic['urgent'],
+                traffic['num_failed_logins'],
+                traffic['logged_in'],
+                traffic['num_root']
+            ]])
+            
+            # Predict
+            prediction = self.model.predict(features)[0]
+            
+            # Check if prediction matches actual
+            if prediction != traffic['attack_type']:
+                threats_detected += 1
+                
+        # Show results
+        tk.Label(
+            self.results_frame, 
+            text=f"Threat Detection Results:", 
+            font=("Helvetica", 12, "bold"),
+            bg="#ffffff"
+        ).pack()
+        
+        tk.Label(
+            self.results_frame, 
+            text=f"Analyzed {len(self.traffic_data)} traffic samples", 
+            font=("Helvetica", 10),
+            bg="#ffffff"
+        ).pack()
+        
+        tk.Label(
+            self.results_frame, 
+            text=f"Detected {threats_detected} potential threats", 
+            font=("Helvetica", 10),
+            fg="#e74c3c" if threats_detected > 0 else "#2ecc71",
+            bg="#ffffff"
+        ).pack()
+        
+        tk.Label(
+            self.results_frame, 
+            text=f"Model Accuracy: {self.model_accuracy:.2%}", 
+            font=("Helvetica", 10),
+            bg="#ffffff"
+        ).pack()
+        
+    def update_dashboard(self):
+        # Clear dashboard
+        for widget in self.dashboard_tab.winfo_children():
+            widget.destroy()
+            
+        if not hasattr(self, 'traffic_data') or not self.traffic_data:
+            return
+            
+        # Convert to DataFrame
+        df = pd.DataFrame(self.traffic_data)
+        
+        # Create threat distribution chart
+        fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=100)
+        threat_counts = df['label'].value_counts()
+        colors = ['#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#3498db']
+        threat_counts.plot(kind='bar', color=colors[:len(threat_counts)], ax=ax1)
+        ax1.set_title('Traffic Threat Distribution')
+        ax1.set_ylabel('Count')
+        plt.xticks(rotation=45)
+        
+        canvas1 = FigureCanvasTkAgg(fig1, master=self.dashboard_tab)
+        canvas1.draw()
+        canvas1.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        
+    def update_traffic_log(self):
+        # Clear log tab
+        for widget in self.log_tab.winfo_children():
+            widget.destroy()
+            
+        if not hasattr(self, 'traffic_data') or not self.traffic_data:
+            return
+            
+        # Create a scrollable frame
+        canvas = tk.Canvas(self.log_tab, bg="#ffffff")
+        scrollbar = ttk.Scrollbar(self.log_tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#ffffff")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Add column headers
+        headers = ["Time", "Source IP", "Dest IP", "Protocol", "Threat Type"]
+        header_frame = tk.Frame(scrollable_frame, bg="#2c3e50")
+        header_frame.pack(fill="x", pady=(0, 5))
+        
+        for i, header in enumerate(headers):
+            tk.Label(
+                header_frame, 
+                text=header, 
+                font=("Helvetica", 10, "bold"), 
+                fg="white", 
+                bg="#2c3e50",
+                width=15 if i < len(headers)-1 else 20,
+                anchor="w"
+            ).pack(side="left", padx=2)
+        
+        # Add traffic entries
+        for traffic in reversed(self.traffic_data):  # Show newest first
+            frame = tk.Frame(
+                scrollable_frame, 
+                bg="#f8f9fa", 
+                bd=1, 
+                relief="solid",
+                padx=5,
+                pady=5
+            )
+            frame.pack(fill="x", pady=1)
+            
+            # Color based on threat type
+            bg_color = "#d5f5e3" if traffic['attack_type'] == "normal" else "#fadbd8"
+            
+            # Time
+            tk.Label(
+                frame, 
+                text=traffic['timestamp'], 
+                bg=bg_color, 
+                font=("Helvetica", 8),
+                width=15,
+                anchor="w"
+            ).pack(side="left", padx=2)
+            
+            # Source IP
+            tk.Label(
+                frame, 
+                text=traffic['src_ip'], 
+                bg=bg_color, 
+                font=("Helvetica", 8),
+                width=15,
+                anchor="w"
+            ).pack(side="left", padx=2)
+            
+            # Dest IP
+            tk.Label(
+                frame, 
+                text=traffic['dst_ip'], 
+                bg=bg_color, 
+                font=("Helvetica", 8),
+                width=15,
+                anchor="w"
+            ).pack(side="left", padx=2)
+            
+            # Protocol
+            tk.Label(
+                frame, 
+                text=traffic['protocol'], 
+                bg=bg_color, 
+                font=("Helvetica", 8),
+                width=15,
+                anchor="w"
+            ).pack(side="left", padx=2)
+            
+            # Threat Type
+            threat_color = "#2ecc71" if traffic['attack_type'] == "normal" else "#e74c3c"
+            tk.Label(
+                frame, 
+                text=traffic['label'], 
+                fg="white",
+                bg=threat_color, 
+                font=("Helvetica", 8, "bold"),
+                width=20,
+                anchor="w"
+            ).pack(side="left", padx=2)
+            
+    def update_model_info(self):
+        # Clear model tab
+        for widget in self.model_tab.winfo_children():
+            widget.destroy()
+            
+        if not self.model:
+            return
+            
+        # Model information
+        info_frame = tk.Frame(self.model_tab, bg="#ffffff")
+        info_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        tk.Label(
+            info_frame, 
+            text="AI Model Information", 
+            font=("Helvetica", 14, "bold"),
+            bg="#ffffff"
+        ).pack(anchor="w", pady=(0, 10))
+        
+        tk.Label(
+            info_frame, 
+            text="Algorithm: Random Forest Classifier", 
+            font=("Helvetica", 10),
+            bg="#ffffff"
+        ).pack(anchor="w")
+        
+        tk.Label(
+            info_frame, 
+            text=f"Accuracy: {self.model_accuracy:.2%}", 
+            font=("Helvetica", 10),
+            bg="#ffffff"
+        ).pack(anchor="w")
+        
+        tk.Label(
+            info_frame, 
+            text="Features Used:", 
+            font=("Helvetica", 10, "bold"),
+            bg="#ffffff"
+        ).pack(anchor="w", pady=(10, 0))
+        
+        features = [
+            'Duration', 'Source Bytes', 'Destination Bytes',
+            'Wrong Fragments', 'Urgent Packets', 'Failed Logins',
+            'Logged In', 'Root Access Attempts'
+        ]
+        
+        for feature in features:
+            tk.Label(
+                info_frame, 
+                text=f"- {feature}", 
+                font=("Helvetica", 9),
+                bg="#ffffff"
+            ).pack(anchor="w")
+            
+        tk.Label(
+            info_frame, 
+            text="Threat Types Detected:", 
+            font=("Helvetica", 10, "bold"),
+            bg="#ffffff"
+        ).pack(anchor="w", pady=(10, 0))
+        
+        for name, desc in self.attack_types.items():
+            tk.Label(
+                info_frame, 
+                text=f"- {desc}", 
+                font=("Helvetica", 9),
+                bg="#ffffff"
+            ).pack(anchor="w")
+
+# Run the application
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = CyberThreatDetector(root)
+    root.mainloop()
